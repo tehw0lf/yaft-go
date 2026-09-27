@@ -27,8 +27,10 @@ if [[ ! -f "$LOCK" ]]; then
   exit 1
 fi
 
-version="$(grep -E '^version=' "$LOCK" | cut -d= -f2-)"
-expected="$(grep -E '^sha256=' "$LOCK" | cut -d= -f2-)"
+# || true: without it, a missing line makes grep fail, and set -e would end
+# the script before the message below could say why.
+version="$(grep -E '^version=' "$LOCK" | cut -d= -f2- || true)"
+expected="$(grep -E '^sha256=' "$LOCK" | cut -d= -f2- || true)"
 
 if [[ -z "$version" || -z "$expected" ]]; then
   echo "error: $LOCK needs both version= and sha256=" >&2

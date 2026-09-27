@@ -153,7 +153,10 @@ func (p *APIFeatureProvider) Refresh(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	data := NormaliseCollection(response)
+	data, err := groupFrom(response)
+	if err != nil {
+		return false, fmt.Errorf("yaft: GET %s: %w", p.features, err)
+	}
 	p.data.Store(&data)
 	// Recorded only after the group loaded, so a failed fetch is retried.
 	p.hash = hash
@@ -221,6 +224,37 @@ func (p *APIFeatureProvider) get(ctx context.Context, target string) (any, error
 		return nil, fmt.Errorf("yaft: GET %s sent a body that does not parse: %w", target, err)
 	}
 	return parsed, nil
+}
+
+// groupFrom accepts a /features body only if it is recognisably a group: a
+// collection envelope, even an empty one, or a single toggle. Anything else
+// -- null, an array, an error object from a proxy -- would normalise to an
+// empty map, and storing that would switch every feature off without an
+// error, while the recorded hash kept it that way.
+func groupFrom(response any) (map[string]Feature, error) {
+	body, ok := response.(map[string]any)
+	if !ok {
+		return nil, errors.New("the body is not a JSON object")
+	}
+	data := NormaliseCollection(body)
+	if len(data) > 0 {
+		return data, nil
+	}
+	// Nothing usable came out. That is right for an empty collection and
+	// wrong for everything else: no envelope at all, or one whose entries
+	// are all unusable ({"toggles": [null]}). Individual unusable entries
+	// next to good ones are still just skipped (R25).
+	collection, ok := body["toggles"].([]any)
+	if !ok {
+		collection, ok = body["value"].([]any)
+	}
+	if !ok {
+		return nil, errors.New("the body holds no toggles")
+	}
+	if len(collection) > 0 {
+		return nil, fmt.Errorf("none of the %d entries is a usable toggle", len(collection))
+	}
+	return data, nil
 }
 
 // hashOf reads the hash by presence, as the other ports do: collectionHash,
