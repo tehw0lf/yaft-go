@@ -1,0 +1,29 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build_and_publish:
+    uses: tehw0lf/workflows/.github/workflows/build-test-publish.yml@main
+    permissions:
+      id-token: write
+      attestations: write
+      actions: write
+      contents: write
+      packages: write
+      security-events: write
+      pull-requests: write
+    with:
+      tool: go
+      # Fetches the conformance suite pinned in conformance.lock and
+      # regenerates the yaft-shell output the adapter uses.
+      install: generate ./...
+      lint: vet ./...
+      test: test -race ./...
+      build_branch: build ./...
+      build_main: build ./...
+      # A Go module is published by its tag; set_git_tag reads VERSION.
