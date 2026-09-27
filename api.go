@@ -153,7 +153,10 @@ func (p *APIFeatureProvider) Refresh(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	data := NormaliseCollection(response)
+	data, err := groupFrom(response)
+	if err != nil {
+		return false, fmt.Errorf("yaft: GET %s: %w", p.features, err)
+	}
 	p.data.Store(&data)
 	// Recorded only after the group loaded, so a failed fetch is retried.
 	p.hash = hash
@@ -221,6 +224,25 @@ func (p *APIFeatureProvider) get(ctx context.Context, target string) (any, error
 		return nil, fmt.Errorf("yaft: GET %s sent a body that does not parse: %w", target, err)
 	}
 	return parsed, nil
+}
+
+// groupFrom accepts a /features body only if it is recognisably a group: a
+// collection envelope, even an empty one, or a single toggle. Anything else
+// -- null, an array, an error object from a proxy -- would normalise to an
+// empty map, and storing that would switch every feature off without an
+// error, while the recorded hash kept it that way.
+func groupFrom(response any) (map[string]Feature, error) {
+	body, ok := response.(map[string]any)
+	if !ok {
+		return nil, errors.New("the body is not a JSON object")
+	}
+	data := NormaliseCollection(body)
+	_, hasToggles := body["toggles"].([]any)
+	_, hasValue := body["value"].([]any)
+	if len(data) == 0 && !hasToggles && !hasValue {
+		return nil, errors.New("the body holds no toggles")
+	}
+	return data, nil
 }
 
 // hashOf reads the hash by presence, as the other ports do: collectionHash,
