@@ -1,0 +1,5 @@
+# Fetched by go generate (scripts/fetch-conformance.sh) from the version pinned
+# in conformance.lock. Never committed: the lock file plus its checksum is what
+# makes a suite bump a reviewable one-line diff.
+testdata/conformance/
+/yaft-shell

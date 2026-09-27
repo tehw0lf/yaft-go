@@ -1,0 +1,27 @@
+<svg viewBox="0 0 60 60" stroke="" fill="#8e8e8e" xmlns="http://www.w3.org/2000/svg">
+    <title>YaFT Logo</title>
+    <desc>Yet Another Feature Toggle - Copyright 2025 tehw0lf</desc>
+    <metadata>
+        <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/">
+            <rdf:Description>
+                <dc:creator>tehw0lf</dc:creator>
+                <dc:date>2025</dc:date>
+                <dc:rights>Copyright 2025 tehw0lf. All rights reserved.</dc:rights>
+            </rdf:Description>
+        </rdf:RDF>
+    </metadata>
+    <!-- Y -->
+    <path d="M5,5 L30,28" stroke="#8e8e8e" stroke-width="4" fill="none" />
+    <path d="M55,5 L30,28" stroke="#8e8e8e" stroke-width="4" fill="none" />
+    <!-- A -->
+    <rect x="19" y="17.5" width="22" height="3" />
+    <!-- F -->
+    <rect x="27.5" y="40" width="15" height="5" />
+    <!-- T -->
+    <rect x="27.5" y="25" width="5" height="35" />
+    <rect x="10" y="25" width="40" height="5" />
+    <!-- cross -->
+    <path d="M5,20 L20,5" stroke="red" stroke-width="4" fill="none" />
+    <!-- check -->
+    <path d="M40.8,20.8 L30.8,10.8" stroke="green" stroke-width="4" fill="none" />
+</svg>
