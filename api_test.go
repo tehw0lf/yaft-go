@@ -148,7 +148,8 @@ func TestAPIKeepsDataWhenARefreshFails(t *testing.T) {
 // Found in review: a 200 with a body that is not a group -- a proxy's error
 // page, null -- used to replace the data with nothing, silently and for good.
 func TestAPIKeepsDataOnABodyThatIsNotAGroup(t *testing.T) {
-	for _, body := range []string{`null`, `[]`, `"x"`, `{"error":"proxy says no"}`} {
+	for _, body := range []string{`null`, `[]`, `"x"`, `{"error":"proxy says no"}`,
+		`{"toggles": [null]}`, `{"toggles": [{}]}`, `{"value": [{"Value": "true"}]}`} {
 		t.Run(body, func(t *testing.T) {
 			b := newBackend(t)
 			b.serve("h1", `{"toggles": [{"key": "k", "value": "true"}]}`)
@@ -177,6 +178,11 @@ func TestAPIAcceptsAnEmptyGroupAndASingleToggle(t *testing.T) {
 	p := mustProvider(t, b.server.URL)
 	if _, err := p.Refresh(context.Background()); err != nil {
 		t.Errorf("empty group refused: %v", err)
+	}
+	// An unusable entry next to a good one is skipped, not fatal (R25).
+	b.serve("h3", `{"toggles": [null, {"key": "`+group+`|kept", "value": "true"}]}`)
+	if _, err := p.Refresh(context.Background()); err != nil || !p.IsEnabled("kept") {
+		t.Errorf("mixed collection refused: %v", err)
 	}
 	b.serve("h2", `{"key": "`+group+`|solo", "value": "true"}`)
 	if _, err := p.Refresh(context.Background()); err != nil || !p.IsEnabled("solo") {

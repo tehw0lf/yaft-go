@@ -65,7 +65,8 @@ func Func[F any](key string, original, fallback F) F {
 	// other way to do it generically. The signature is the static type of
 	// original -- chosen by the developer at compile time -- and at runtime
 	// only the provider's bool picks between two developer-supplied
-	// functions. No input reaches the type or the code being called.
+	// functions. Invocation arguments do not change the signature or select
+	// an implementation; they are forwarded to the selected function.
 	// nosemgrep: go.lang.security.audit.reflect-makefunc.reflect-makefunc
 	wrapped := reflect.MakeFunc(signature, func(args []reflect.Value) []reflect.Value {
 		switch {

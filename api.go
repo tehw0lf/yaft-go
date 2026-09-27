@@ -237,10 +237,22 @@ func groupFrom(response any) (map[string]Feature, error) {
 		return nil, errors.New("the body is not a JSON object")
 	}
 	data := NormaliseCollection(body)
-	_, hasToggles := body["toggles"].([]any)
-	_, hasValue := body["value"].([]any)
-	if len(data) == 0 && !hasToggles && !hasValue {
+	if len(data) > 0 {
+		return data, nil
+	}
+	// Nothing usable came out. That is right for an empty collection and
+	// wrong for everything else: no envelope at all, or one whose entries
+	// are all unusable ({"toggles": [null]}). Individual unusable entries
+	// next to good ones are still just skipped (R25).
+	collection, ok := body["toggles"].([]any)
+	if !ok {
+		collection, ok = body["value"].([]any)
+	}
+	if !ok {
 		return nil, errors.New("the body holds no toggles")
+	}
+	if len(collection) > 0 {
+		return nil, fmt.Errorf("none of the %d entries is a usable toggle", len(collection))
 	}
 	return data, nil
 }
