@@ -61,6 +61,12 @@ func Func[F any](key string, original, fallback F) F {
 	hasFallback := off.IsValid() && !off.IsNil()
 	signature := on.Type()
 
+	// reflect.MakeFunc is how Func wraps any function type; there is no
+	// other way to do it generically. The signature is the static type of
+	// original -- chosen by the developer at compile time -- and at runtime
+	// only the provider's bool picks between two developer-supplied
+	// functions. No input reaches the type or the code being called.
+	// nosemgrep: go.lang.security.audit.reflect-makefunc.reflect-makefunc
 	wrapped := reflect.MakeFunc(signature, func(args []reflect.Value) []reflect.Value {
 		switch {
 		case requireProvider().IsEnabled(key):
