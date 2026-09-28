@@ -1,6 +1,7 @@
 package yaft_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,7 +23,7 @@ import (
 
 // formats are the case-file format versions this adapter implements. A file
 // in another format may carry a field this adapter never reads.
-var formats = map[string]float64{"evaluation": 1, "decorator": 1, "mapping": 2}
+var formats = map[string]float64{"evaluation": 1, "decorator": 1, "mapping": 3}
 
 type caseFile struct {
 	Suite   string           `json:"suite"`
@@ -93,15 +94,25 @@ func TestConformanceMapping(t *testing.T) {
 			expected := c["expected"].(map[string]any)
 			switch c["shape"] {
 			case "feature":
-				got := map[string]any{}
-				for key, f := range yaft.NormaliseCollection(c["response"]) {
-					tags := make([]any, len(f.Tags))
-					for i, tag := range f.Tags {
-						tags[i] = tag
+				if held, ok := c["held"].(map[string]any); ok {
+					b, p := refreshOver(t, held, c["response"])
+					if got := fields(p.Data()); !reflect.DeepEqual(got, expected) {
+						t.Errorf("data after the refresh =\n  %v\nwant\n  %v", got, expected)
 					}
-					got[key] = map[string]any{"key": f.Key, "value": f.Value, "activeAt": f.ActiveAt, "disabledAt": f.DisabledAt, "tags": tags}
+					if retry, ok := c["retry"].(map[string]any); ok {
+						// Same hash: a port that recorded it on the rejected
+						// body never fetches again (R30).
+						b.serve("response", mustJSON(t, retry["response"]))
+						if _, err := p.Refresh(context.Background()); err != nil {
+							t.Errorf("retry: %v", err)
+						}
+						if got := fields(p.Data()); !reflect.DeepEqual(got, retry["expected"]) {
+							t.Errorf("data after the retry =\n  %v\nwant\n  %v", got, retry["expected"])
+						}
+					}
+					return
 				}
-				if !reflect.DeepEqual(got, expected) {
+				if got := fields(yaft.NormaliseCollection(c["response"])); !reflect.DeepEqual(got, expected) {
 					t.Errorf("NormaliseCollection =\n  %v\nwant\n  %v", got, expected)
 				}
 			case "boolean":
@@ -124,6 +135,51 @@ func TestConformanceMapping(t *testing.T) {
 			}
 		})
 	}
+}
+
+// refreshOver runs a refresh case (R30) through the real API provider: held
+// is served and loaded first, then response under a new hash. The second
+// refresh fails for a body that is not a group; that is expected, and the
+// data it leaves behind is what the case asserts.
+func refreshOver(t *testing.T, held map[string]any, response any) (*backend, *yaft.APIFeatureProvider) {
+	t.Helper()
+	toggles := make([]any, 0, len(held))
+	for _, f := range held {
+		toggles = append(toggles, f)
+	}
+	b := newBackend(t)
+	b.serve("held", mustJSON(t, map[string]any{"toggles": toggles}))
+	p := mustProvider(t, b.server.URL)
+	if changed, err := p.Refresh(context.Background()); err != nil || !changed {
+		t.Fatalf("loading held: changed=%v err=%v", changed, err)
+	}
+	b.serve("response", mustJSON(t, response))
+	if _, err := p.Refresh(context.Background()); err != nil {
+		t.Logf("refresh failed, as it must for a body that is not a group: %v", err)
+	}
+	return b, p
+}
+
+// fields writes features in the case files' own spelling.
+func fields(data map[string]yaft.Feature) map[string]any {
+	got := map[string]any{}
+	for key, f := range data {
+		tags := make([]any, len(f.Tags))
+		for i, tag := range f.Tags {
+			tags[i] = tag
+		}
+		got[key] = map[string]any{"key": f.Key, "value": f.Value, "activeAt": f.ActiveAt, "disabledAt": f.DisabledAt, "tags": tags}
+	}
+	return got
+}
+
+func mustJSON(t *testing.T, v any) string {
+	t.Helper()
+	raw, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
 }
 
 // --- decorator --------------------------------------------------------------
