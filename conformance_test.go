@@ -23,7 +23,7 @@ import (
 
 // formats are the case-file format versions this adapter implements. A file
 // in another format may carry a field this adapter never reads.
-var formats = map[string]float64{"evaluation": 1, "decorator": 1, "mapping": 3}
+var formats = map[string]float64{"evaluation": 1, "decorator": 1, "mapping": 4}
 
 type caseFile struct {
 	Suite   string           `json:"suite"`
@@ -101,7 +101,11 @@ func TestConformanceMapping(t *testing.T) {
 					if !ok {
 						unsupported(t, "held", raw, c)
 					}
-					b, p := refreshOver(t, held, c["response"])
+					rejected, ok := c["rejected"].(bool)
+					if !ok {
+						unsupported(t, "rejected", c["rejected"], c)
+					}
+					b, p := refreshOver(t, held, c["response"], rejected)
 					if got := fields(p.Data()); !reflect.DeepEqual(got, expected) {
 						t.Errorf("data after the refresh =\n  %v\nwant\n  %v", got, expected)
 					}
@@ -149,9 +153,9 @@ func TestConformanceMapping(t *testing.T) {
 
 // refreshOver runs a refresh case (R30) through the real API provider: held
 // is served and loaded first, then response under a new hash. The second
-// refresh fails for a body that is not a group; that is expected, and the
-// data it leaves behind is what the case asserts.
-func refreshOver(t *testing.T, held map[string]any, response any) (*backend, *yaft.APIFeatureProvider) {
+// refresh must fail exactly when the case says rejected (R32); the data it
+// leaves behind is what the case asserts next.
+func refreshOver(t *testing.T, held map[string]any, response any, rejected bool) (*backend, *yaft.APIFeatureProvider) {
 	t.Helper()
 	toggles := make([]any, 0, len(held))
 	for _, f := range held {
@@ -164,8 +168,14 @@ func refreshOver(t *testing.T, held map[string]any, response any) (*backend, *ya
 		t.Fatalf("loading held: changed=%v err=%v", changed, err)
 	}
 	b.serve("response", mustJSON(t, response))
-	if _, err := p.Refresh(context.Background()); err != nil {
-		t.Logf("refresh failed, as it must for a body that is not a group: %v", err)
+	// Refresh reports its outcome, so the adapter checks it (R32): a
+	// rejected body fails the refresh, an applied group does not.
+	_, err := p.Refresh(context.Background())
+	if rejected && err == nil {
+		t.Errorf("refresh accepted a body it must reject")
+	}
+	if !rejected && err != nil {
+		t.Errorf("refresh rejected a group it must apply: %v", err)
 	}
 	return b, p
 }
