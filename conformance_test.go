@@ -94,12 +94,22 @@ func TestConformanceMapping(t *testing.T) {
 			expected := c["expected"].(map[string]any)
 			switch c["shape"] {
 			case "feature":
-				if held, ok := c["held"].(map[string]any); ok {
+				if raw, present := c["held"]; present {
+					// A held that is not a map must not fall through to a
+					// plain mapping: that would test a different rule.
+					held, ok := raw.(map[string]any)
+					if !ok {
+						unsupported(t, "held", raw, c)
+					}
 					b, p := refreshOver(t, held, c["response"])
 					if got := fields(p.Data()); !reflect.DeepEqual(got, expected) {
 						t.Errorf("data after the refresh =\n  %v\nwant\n  %v", got, expected)
 					}
-					if retry, ok := c["retry"].(map[string]any); ok {
+					if raw, present := c["retry"]; present {
+						retry, ok := raw.(map[string]any)
+						if !ok {
+							unsupported(t, "retry", raw, c)
+						}
 						// Same hash: a port that recorded it on the rejected
 						// body never fetches again (R30).
 						b.serve("response", mustJSON(t, retry["response"]))
