@@ -1,6 +1,7 @@
 package yaft_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,7 +23,7 @@ import (
 
 // formats are the case-file format versions this adapter implements. A file
 // in another format may carry a field this adapter never reads.
-var formats = map[string]float64{"evaluation": 1, "decorator": 1, "mapping": 2}
+var formats = map[string]float64{"evaluation": 1, "decorator": 1, "mapping": 4}
 
 type caseFile struct {
 	Suite   string           `json:"suite"`
@@ -93,15 +94,39 @@ func TestConformanceMapping(t *testing.T) {
 			expected := c["expected"].(map[string]any)
 			switch c["shape"] {
 			case "feature":
-				got := map[string]any{}
-				for key, f := range yaft.NormaliseCollection(c["response"]) {
-					tags := make([]any, len(f.Tags))
-					for i, tag := range f.Tags {
-						tags[i] = tag
+				if raw, present := c["held"]; present {
+					// A held that is not a map must not fall through to a
+					// plain mapping: that would test a different rule.
+					held, ok := raw.(map[string]any)
+					if !ok {
+						unsupported(t, "held", raw, c)
 					}
-					got[key] = map[string]any{"key": f.Key, "value": f.Value, "activeAt": f.ActiveAt, "disabledAt": f.DisabledAt, "tags": tags}
+					rejected, ok := c["rejected"].(bool)
+					if !ok {
+						unsupported(t, "rejected", c["rejected"], c)
+					}
+					b, p := refreshOver(t, held, c["response"], rejected)
+					if got := fields(p.Data()); !reflect.DeepEqual(got, expected) {
+						t.Errorf("data after the refresh =\n  %v\nwant\n  %v", got, expected)
+					}
+					if raw, present := c["retry"]; present {
+						retry, ok := raw.(map[string]any)
+						if !ok {
+							unsupported(t, "retry", raw, c)
+						}
+						// Same hash: a port that recorded it on the rejected
+						// body never fetches again (R30).
+						b.serve("response", mustJSON(t, retry["response"]))
+						if _, err := p.Refresh(context.Background()); err != nil {
+							t.Errorf("retry: %v", err)
+						}
+						if got := fields(p.Data()); !reflect.DeepEqual(got, retry["expected"]) {
+							t.Errorf("data after the retry =\n  %v\nwant\n  %v", got, retry["expected"])
+						}
+					}
+					return
 				}
-				if !reflect.DeepEqual(got, expected) {
+				if got := fields(yaft.NormaliseCollection(c["response"])); !reflect.DeepEqual(got, expected) {
 					t.Errorf("NormaliseCollection =\n  %v\nwant\n  %v", got, expected)
 				}
 			case "boolean":
@@ -124,6 +149,57 @@ func TestConformanceMapping(t *testing.T) {
 			}
 		})
 	}
+}
+
+// refreshOver runs a refresh case (R30) through the real API provider: held
+// is served and loaded first, then response under a new hash. The second
+// refresh must fail exactly when the case says rejected (R32); the data it
+// leaves behind is what the case asserts next.
+func refreshOver(t *testing.T, held map[string]any, response any, rejected bool) (*backend, *yaft.APIFeatureProvider) {
+	t.Helper()
+	toggles := make([]any, 0, len(held))
+	for _, f := range held {
+		toggles = append(toggles, f)
+	}
+	b := newBackend(t)
+	b.serve("held", mustJSON(t, map[string]any{"toggles": toggles}))
+	p := mustProvider(t, b.server.URL)
+	if changed, err := p.Refresh(context.Background()); err != nil || !changed {
+		t.Fatalf("loading held: changed=%v err=%v", changed, err)
+	}
+	b.serve("response", mustJSON(t, response))
+	// Refresh reports its outcome, so the adapter checks it (R32): a
+	// rejected body fails the refresh, an applied group does not.
+	_, err := p.Refresh(context.Background())
+	if rejected && err == nil {
+		t.Errorf("refresh accepted a body it must reject")
+	}
+	if !rejected && err != nil {
+		t.Errorf("refresh rejected a group it must apply: %v", err)
+	}
+	return b, p
+}
+
+// fields writes features in the case files' own spelling.
+func fields(data map[string]yaft.Feature) map[string]any {
+	got := map[string]any{}
+	for key, f := range data {
+		tags := make([]any, len(f.Tags))
+		for i, tag := range f.Tags {
+			tags[i] = tag
+		}
+		got[key] = map[string]any{"key": f.Key, "value": f.Value, "activeAt": f.ActiveAt, "disabledAt": f.DisabledAt, "tags": tags}
+	}
+	return got
+}
+
+func mustJSON(t *testing.T, v any) string {
+	t.Helper()
+	raw, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
 }
 
 // --- decorator --------------------------------------------------------------
