@@ -1,7 +1,5 @@
 package yaft
 
-import "fmt"
-
 // NormaliseFeature turns one entry of a parsed JSON response into a Feature,
 // whichever field spelling it arrived in.
 //
@@ -14,8 +12,8 @@ func NormaliseFeature(raw map[string]any) Feature {
 	feature := Feature{
 		Key:        text(field(raw, "key", "Key")),
 		Value:      text(field(raw, "value", "Value")),
-		ActiveAt:   date(field(raw, "activeAt", "ActiveAt")),
-		DisabledAt: date(field(raw, "disabledAt", "DisabledAt")),
+		ActiveAt:   text(field(raw, "activeAt", "ActiveAt")),
+		DisabledAt: text(field(raw, "disabledAt", "DisabledAt")),
 		Tags:       []string{},
 	}
 	// Filtered rather than asserted: a mixed array would otherwise put a
@@ -85,20 +83,11 @@ func field(raw map[string]any, lower, upper string) any {
 	return raw[upper]
 }
 
+// text reads a string field; anything that is not a string is not set (R33).
+// Key and value are strings, and JSON booleans belong in the boolean shape:
+// fmt.Sprint would turn "value": true into "true" and the feature on. The
+// backend sends null for an unset bound, fixtures send ""; both mean none (R24).
 func text(value any) string {
-	switch v := value.(type) {
-	case nil:
-		return ""
-	case string:
-		return v
-	default:
-		return fmt.Sprint(v)
-	}
-}
-
-// date reads a bound. The backend sends null for an unset one, fixtures send
-// ""; both mean none (R24).
-func date(value any) string {
 	s, _ := value.(string)
 	return s
 }
