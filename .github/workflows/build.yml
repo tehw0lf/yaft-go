@@ -17,6 +17,7 @@ jobs:
       packages: write
       security-events: write
       pull-requests: write
+      issues: write
     with:
       tool: go
       # Fetches the conformance suite pinned in conformance.lock and
